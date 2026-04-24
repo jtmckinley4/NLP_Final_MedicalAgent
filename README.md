@@ -24,7 +24,7 @@ MediRAG addresses this by grounding responses in retrieved medical evidence.
 
 The system consists of three main components:
 
-### 1. RAG Pipeline (Your Contribution)
+### 1. RAG Pipeline 
 - Data ingestion from MedQuAD dataset
 - Text cleaning and preprocessing
 - Sentence-aware chunking (150–300 words with overlap)
@@ -32,7 +32,7 @@ The system consists of three main components:
 - Storage in ChromaDB vector database
 - Semantic retrieval of relevant chunks
 
-### 2. Multi-Agent System (Team Integration)
+### 2. Multi-Agent System 
 - Triage Agent (classifies query type and urgency)
 - Retrieval Agent (calls vector database)
 - Answer Agent (generates structured response)
