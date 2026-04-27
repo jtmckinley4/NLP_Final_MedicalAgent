@@ -3,3 +3,20 @@ __pycache__/
 .DS_Store
 chroma_db/
 chroma_db/
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Environment variables
+.env
+
+# IDE files
+.vscode/

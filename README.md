@@ -20,28 +20,58 @@ MediRAG addresses this by grounding responses in retrieved medical evidence.
 
 ---
 
-## System Architecture
+## Architecture Overview
 
-The system consists of three main components:
+The application runs a lightweight orchestration pipeline:
 
-### 1. RAG Pipeline 
-- Data ingestion from MedQuAD dataset
-- Text cleaning and preprocessing
-- Sentence-aware chunking (150–300 words with overlap)
-- Embedding generation using SentenceTransformers
-- Storage in ChromaDB vector database
-- Semantic retrieval of relevant chunks
+1. Router agent classifies the question.
+2. Specialist agent generates a draft answer:
+   - general medical path, or
+   - medication path.
+3. Safety agent validates/revises the answer.
+4. Memory helper updates short conversation context.
+5. CLI prints a structured response.
 
-### 2. Multi-Agent System 
-- Triage Agent (classifies query type and urgency)
-- Retrieval Agent (calls vector database)
-- Answer Agent (generates structured response)
-- Safety Agent (verifies medical reliability)
+Key code locations:
 
-### 3. Evaluation Framework
-- Deterministic checks (citations, formatting)
-- LLM-based evaluation (faithfulness, clarity)
-- Behavioral evaluation (tool usage and reasoning flow)
+- `src/agents/` - router, general specialist, medication specialist, safety verifier
+- `src/tools/` - retrieval stub, drug lookup stub, evidence validation, memory helpers
+- `src/models/schemas.py` - shared Pydantic schemas
+- `src/orchestration/pipeline.py` - end-to-end turn logic
+- `src/main.py` - CLI entrypoint
+- `src/evals/placeholder_evals.py` - evaluation TODO placeholders
+
+
+## Environment Variables
+
+- `CAP6640_API_KEY` - required for live LLM calls via course proxy
+
+Model provider wiring in `src/config.py` uses:
+
+- Proxy URL: `https://litellm.6640.ucf.spencerlyon.com`
+- API key env variable: `CAP6640_API_KEY`
+
+## Run CLI
+
+Run from repository root:
+
+- `uv run python -m src.main`
+
+Note: live model calls are always enabled, so `CAP6640_API_KEY` must be set in `.env`.
+
+Exit commands:
+
+- `exit`
+- `quit`
+
+Printed fields:
+
+- Direct answer
+- Evidence summary
+- Citations
+- Safety note
+- Confidence
+- Follow-up question (if present)
 
 ---
 
