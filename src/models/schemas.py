@@ -38,12 +38,13 @@ class RetrievedChunk(BaseModel):
 
 
 class DrugInfoResult(BaseModel):
-    """Stub output for drug lookup."""
+    """Structured drug label data from openFDA."""
 
     drug_name: str
     uses: list[str] = Field(default_factory=list)
     common_side_effects: list[str] = Field(default_factory=list)
     interactions: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
     disclaimer: str
 
 
@@ -91,12 +92,13 @@ class SpecialistResult(BaseModel):
 
 
 class RouterAgentOutput(BaseModel):
-    """Final router output after delegation and safety checks."""
+    """Router output before orchestrator-enforced safety pass."""
 
     route: RouteType
     risk_level: RiskLevel
     rationale: str = Field(min_length=3)
     answer: DraftMedicalAnswer
+    evidence: list[RetrievedChunk] = Field(default_factory=list)
 
 
 class PipelineResult(BaseModel):
@@ -106,4 +108,3 @@ class PipelineResult(BaseModel):
     risk_level: RiskLevel
     answer: DraftMedicalAnswer
     memory: MemorySummary
-
