@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import warnings
+
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
 
 import logfire
 from src.models.schemas import MemorySummary, PipelineResult
@@ -12,6 +17,16 @@ from src.orchestration.pipeline import run_turn
 def _configure_runtime_output() -> None:
     """Suppress runtime warning noise from dependency stack."""
     warnings.filterwarnings("ignore")
+    logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+    logging.getLogger("transformers").setLevel(logging.ERROR)
+    logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+
+    try:
+        from huggingface_hub import logging as hf_logging
+        hf_logging.set_verbosity_error()
+    except Exception:
+        pass
+
     try:
         from transformers.utils import logging as transformers_logging
         transformers_logging.set_verbosity_error()
