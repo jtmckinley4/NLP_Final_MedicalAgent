@@ -2,9 +2,22 @@
 
 from __future__ import annotations
 
+import warnings
+
+import logfire
 from src.models.schemas import MemorySummary, PipelineResult
 from src.orchestration.pipeline import run_turn
-import logfire
+
+
+def _configure_runtime_output() -> None:
+    """Suppress runtime warning noise from dependency stack."""
+    warnings.filterwarnings("ignore")
+    try:
+        from transformers.utils import logging as transformers_logging
+        transformers_logging.set_verbosity_error()
+    except Exception:
+        # Keep startup robust if transformers isn't available.
+        pass
 
 
 def _print_result(result: PipelineResult) -> None:
@@ -28,6 +41,7 @@ def _print_result(result: PipelineResult) -> None:
 
 def main() -> None:
     """Run interactive CLI loop."""
+    _configure_runtime_output()
     print("CLI started. Type 'exit' or 'quit' to stop.")
     memory: MemorySummary | None = None
     logfire.configure(send_to_logfire=False)

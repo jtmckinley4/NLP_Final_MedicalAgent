@@ -55,7 +55,12 @@ Model provider wiring in `src/config.py` uses:
 
 Run from repository root:
 
-- `uv run python -m src.main`
+1. Run `uv sync`
+2. Build the RAG vector database first (only needed once):
+   - `uv run python -m src.rag.ingestion`
+   - Optional rebuild: `uv run python -m src.rag.ingestion --force`
+1. Start the multi-agent application:
+   - `uv run python -m src.main`
 
 Note: live model calls are always enabled, so `CAP6640_API_KEY` must be set in `.env`.
 
