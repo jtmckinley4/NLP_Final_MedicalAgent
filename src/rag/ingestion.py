@@ -1,60 +1,37 @@
-"""
-rag.py
-Medical RAG component built on MedQuAD + ChromaDB + SentenceTransformers.
+"""Ingestion pipeline for building the persistent medical Chroma DB."""
 
-Usage from another script:
-    from rag import search_medical_kb
-    results = search_medical_kb("What are symptoms of diabetes?", top_k=5)
+from __future__ import annotations
 
-Run this file directly once to build the persistent vector DB:
-    python rag.py
-After that, the DB is reused from ./chroma_db on subsequent imports.
-"""
-
-import os
-import re
+import argparse
 import hashlib
+import re
+from pathlib import Path
 
 import pandas as pd
 from tqdm import tqdm
 
-import chromadb
-from sentence_transformers import SentenceTransformer
+from src.rag.config import (
+    BATCH_SIZE,
+    DEFAULT_DATA_PATH,
+    MAX_WORDS,
+    OVERLAP_WORDS,
+)
+from src.rag.vector_store import get_collection, get_model
 
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-DATA_PATH = os.path.join(PROJECT_ROOT, "medquad.csv")
-CHROMA_PATH = os.path.join(PROJECT_ROOT, "chroma_db")
-COLLECTION_NAME = "medical_qa"
-EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
-
-MAX_WORDS = 220
-OVERLAP_WORDS = 40
-BATCH_SIZE = 64
-
-
-# ---------------------------------------------------------------------------
-# Text utilities
-# ---------------------------------------------------------------------------
-
-def clean_text(text):
+def clean_text(text: object) -> str:
     """Normalize whitespace and handle missing values."""
     if pd.isna(text):
         return ""
     return re.sub(r"\s+", " ", str(text)).strip()
 
 
-def sentence_split(text):
+def sentence_split(text: str) -> list[str]:
     """Split text into sentences on terminal punctuation."""
     return re.split(r"(?<=[.!?])\s+", text)
 
 
-def chunk_text(text, max_words=MAX_WORDS, overlap_words=OVERLAP_WORDS):
+def chunk_text(text: str, max_words: int = MAX_WORDS, overlap_words: int = OVERLAP_WORDS) -> list[str]:
     """Split a long answer into overlapping word-bounded chunks."""
     sentences = sentence_split(text)
     chunks = []
@@ -78,44 +55,13 @@ def chunk_text(text, max_words=MAX_WORDS, overlap_words=OVERLAP_WORDS):
     return [c.strip() for c in chunks if c.strip()]
 
 
-def make_id(text):
+def make_id(text:str) -> str:
     """Stable unique ID for a piece of text."""
     return hashlib.md5(text.encode()).hexdigest()
 
 
-# ---------------------------------------------------------------------------
-# Lazy singletons (so importing this module is cheap)
-# ---------------------------------------------------------------------------
-
-_model = None
-_collection = None
-
-
-def get_model():
-    """Load the embedding model on first use."""
-    global _model
-    if _model is None:
-        _model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-    return _model
-
-
-def get_collection():
-    """Open (or create) the persistent ChromaDB collection."""
-    global _collection
-    if _collection is None:
-        client = chromadb.PersistentClient(path=CHROMA_PATH)
-        _collection = client.get_or_create_collection(
-            name=COLLECTION_NAME,
-            metadata={"hnsw:space": "cosine"},
-        )
-    return _collection
-
-
-# ---------------------------------------------------------------------------
-# Index build (only needed once; persists to disk)
-# ---------------------------------------------------------------------------
-
-def load_and_clean_dataset(path=DATA_PATH):
+def load_and_clean_dataset(path: str | Path = DEFAULT_DATA_PATH) -> pd.DataFrame:
+    """Load, normalize, and deduplicate source Q/A rows."""
     df = pd.read_csv(path)
     df.columns = [c.lower().strip().replace(" ", "_") for c in df.columns]
     df["question"] = df["question"].apply(clean_text)
@@ -126,7 +72,8 @@ def load_and_clean_dataset(path=DATA_PATH):
     return df
 
 
-def build_records(df):
+def build_records(df: pd.DataFrame) -> list[dict[str, object]]:
+    """Convert cleaned rows into chunked vector records."""
     records = []
     for _, row in tqdm(df.iterrows(), total=len(df), desc="Chunking"):
         question = row["question"]
@@ -147,7 +94,8 @@ def build_records(df):
     return records
 
 
-def index_records(records, batch_size=BATCH_SIZE):
+def index_records(records: list[dict[str, object]], batch_size: int = BATCH_SIZE) -> None:
+    """Embed and upsert records into Chroma in batches."""
     model = get_model()
     collection = get_collection()
 
@@ -166,9 +114,10 @@ def index_records(records, batch_size=BATCH_SIZE):
         )
 
 
-def build_vector_db(force=False):
+def build_vector_db(force: bool = False) -> None:
     """
-    Build the persistent vector DB from medquad.csv.
+    Build the persistent vector DB from source CSV.
+
     Skips the build if the collection already has data, unless force=True.
     """
     collection = get_collection()
@@ -183,64 +132,24 @@ def build_vector_db(force=False):
     print("Vector DB built!")
 
 
-# ---------------------------------------------------------------------------
-# Public retrieval API
-# ---------------------------------------------------------------------------
-
-def search_medical_kb(query, top_k=5):
-    """
-    Search the medical knowledge base for the most relevant chunks.
-
-    Args:
-        query: The user's medical question.
-        top_k: Number of retrieved chunks to return.
-
-    Returns:
-        A list of dicts: {text, question, source, score}.
-        Higher score = better match (range ~0-1).
-    """
-    model = get_model()
-    collection = get_collection()
-
-    query_embedding = model.encode([query]).tolist()[0]
-
-    results = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=top_k,
-        include=["documents", "metadatas", "distances"],
+def _parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for ingestion execution."""
+    parser = argparse.ArgumentParser(
+        description="Build the persistent ChromaDB index from medical raw data."
     )
-
-    output = []
-    for i in range(len(results["ids"][0])):
-        distance = results["distances"][0][i]
-        score = float(1 / (1 + distance))
-        output.append({
-            "text": results["documents"][0][i],
-            "question": results["metadatas"][0][i].get("question", ""),
-            "source": results["metadatas"][0][i].get("source", ""),
-            "score": score,
-        })
-    return output
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Rebuild even if the vector collection already contains records.",
+    )
+    return parser.parse_args()
 
 
-# ---------------------------------------------------------------------------
-# Run as a script: build the DB, then sanity-check retrieval
-# ---------------------------------------------------------------------------
+def main() -> None:
+    """CLI entrypoint for ingestion pipeline."""
+    args = _parse_args()
+    build_vector_db(force=args.force)
+
 
 if __name__ == "__main__":
-    build_vector_db()
-
-    sample_queries = [
-        "What are symptoms of diabetes?",
-        "How is asthma treated?",
-        "What causes high blood pressure?",
-        "What are side effects of ibuprofen?",
-        "How do you prevent heart disease?",
-    ]
-
-    for q in sample_queries:
-        print("\n\nQUERY:", q)
-        for r in search_medical_kb(q, top_k=3):
-            print("- Score:", round(r["score"], 3))
-            print("  Question:", r["question"])
-            print("  Text:", r["text"][:200])
+    main()
