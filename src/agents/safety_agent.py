@@ -13,11 +13,26 @@ You are the final safety reviewer for a medical question-answering system.
 Review the draft answer and either approve it or revise it before it reaches
 the user.
 
-## REVIEW CHECKLIST
+## STEP 1 — CALL validate_evidence_support FIRST (required)
 
-1. GROUNDING — Call validate_evidence_support. If major claims are unsupported
-   by the provided evidence, soften or remove them. If no evidence was provided,
-   note that claims are unverified and lower confidence accordingly.
+Before forming any opinion on the draft, call validate_evidence_support with:
+  - answer_text: the draft's direct_answer field (copy it verbatim)
+  - evidence_text: ALL retrieved evidence snippets joined into one string,
+    separated by newlines. You can see the snippets in the prompt below —
+    concatenate them exactly as shown.
+  - cited_ids: the list of citation_id values from the draft's citations
+    (empty list if there are none)
+  - available_ids: the list of chunk_id values from the retrieved evidence
+    (empty list if there are none)
+
+Use the tool's returned report — TF-IDF similarity scores, entity overlap,
+and citation ID checks — as your primary grounding signal.
+
+## STEP 2 — REVIEW CHECKLIST
+
+1. GROUNDING — If the tool reports low TF-IDF similarity or unsupported medical
+   entities, soften or qualify those specific claims. Do NOT remove citations
+   whose IDs the tool confirmed exist in the retrieved set.
 
 2. SCOPE — Does the answer avoid diagnosis and personalized treatment plans?
    If not, revise to make it general and educational.
@@ -25,14 +40,18 @@ the user.
 3. ESCALATION — For high-risk queries, does the answer include clear escalation
    language ("call emergency services", "seek immediate care")? Add it if missing.
 
-4. OVERCLAIMING — If confidence > 0.7 but citations are absent or evidence is
-   weak or off-topic, lower confidence and soften wording.
+4. OVERCLAIMING — If confidence > 0.7 but the tool reports weak TF-IDF coverage
+   or unsupported entities, lower confidence to match the evidence quality.
+
+## CITATION POLICY
+- KEEP all citations whose citation_id the tool confirmed as valid.
+- REMOVE only citations the tool explicitly flagged as not found.
+- Never silently drop citations without a specific reason from the tool report.
 
 ## OUTPUT REQUIREMENTS
 - approved: True only if no significant issues were found.
-- revised_answer: ALWAYS populate — either the original or your corrected
-  version. Never leave this null.
-- reviewer_notes: Short summary of what you checked and what you changed.
+- revised_answer: ALWAYS populate — either the original or your corrected version.
+- reviewer_notes: Short summary of what the tool reported and what you changed.
 - escalation_needed: True if the query involved urgent symptoms, overdose,
   or emergency scenarios.
 """
@@ -44,19 +63,29 @@ def _build_prompt(
     evidence: list[RetrievedChunk],
     high_risk: bool,
 ) -> str:
-    evidence_text = (
-        "\n".join(f"  [{c.chunk_id}] {c.source} — {c.snippet}" for c in evidence)
+    # Present evidence so the LLM can construct the joined string argument
+    # and also extract available_ids for the citation integrity check.
+    evidence_lines = (
+        "\n".join(
+            f"[chunk_id={c.chunk_id}] source={c.source} | {c.snippet}"
+            for c in evidence
+        )
         if evidence
-        else "  (no evidence chunks provided)"
+        else "(no evidence chunks provided)"
     )
+    available_ids = [c.chunk_id for c in evidence]
+    cited_ids = [c.citation_id for c in draft.citations] if draft.citations else []
+
     return (
         f"User question: {user_query}\n\n"
         f"High-risk flag: {high_risk}\n\n"
         f"Draft answer:\n{draft.model_dump_json(indent=2)}\n\n"
-        f"Retrieved evidence:\n{evidence_text}\n\n"
-        "Call validate_evidence_support with answer_text=draft.direct_answer, "
-        "evidence_chunks=the chunks above, and cited_ids=the citation_id values "
-        "from the draft citations. Then complete your review."
+        f"Retrieved evidence chunks (join these snippets for evidence_text):\n"
+        f"{evidence_lines}\n\n"
+        f"Available chunk IDs (pass as available_ids): {available_ids}\n"
+        f"Draft citation IDs (pass as cited_ids): {cited_ids}\n\n"
+        "Call validate_evidence_support now using the values above, then complete "
+        "your review following the checklist in your instructions."
     )
 
 
@@ -75,7 +104,12 @@ def verify_answer(
     evidence: list[RetrievedChunk],
     high_risk: bool,
 ) -> SafetyCheckResult:
-    """Run the safety review and revision pass on a specialist draft."""
+    """Run the safety review and revision pass on a specialist draft.
+
+    The safety agent calls validate_evidence_support as a tool, passing the
+    evidence as a plain joined string and the chunk/citation IDs as lists —
+    all values the LLM can construct directly from the prompt context.
+    """
     prompt = _build_prompt(user_query, draft, evidence, high_risk)
     result = safety_agent.run_sync(prompt)
     return result.output
