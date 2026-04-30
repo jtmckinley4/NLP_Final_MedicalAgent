@@ -1,79 +1,133 @@
-"""Deterministic evidence validation tool.
+"""NLP-enhanced evidence validation tool.
 
-Performs two concrete checks the LLM cannot reliably self-certify:
-1. Citation ID integrity — do cited IDs actually exist in the retrieved set?
-2. Answer coverage — what fraction of answer sentences have lexical overlap
-   with any retrieved chunk?
+Performs three concrete checks the LLM cannot reliably self-certify:
+1. Citation ID integrity  — do cited IDs exist in the retrieved set?
+2. TF-IDF cosine similarity — how semantically similar is each answer sentence
+   to the evidence body?
+3. Named entity overlap  — do the entities named in the answer (drugs,
+   conditions, substances) actually appear in the retrieved evidence?
 
-The safety agent uses these results as grounded signal, not as a pass/fail gate.
+The safety agent calls this tool and uses the results as grounded signal when
+deciding whether to approve, revise, or flag the draft answer.
+
+Dependencies (both already required by the project):
+    scikit-learn   — TfidfVectorizer, cosine_similarity
+    spacy          — NER pipeline (en_core_web_sm)
+
+Install the spaCy model once:
+    uv run python -m spacy download en_core_web_sm
 """
 
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 
-from src.models.schemas import EvidenceValidationResult, RetrievedChunk
+import spacy
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
-# Stopwords to ignore when checking lexical overlap — these are too common
-# to be meaningful evidence of grounding
-_STOPWORDS = {
-    "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
-    "of", "with", "by", "from", "is", "are", "was", "were", "be", "been",
-    "being", "have", "has", "had", "do", "does", "did", "will", "would",
-    "could", "should", "may", "might", "can", "this", "that", "these",
-    "those", "it", "its", "not", "as", "if", "when", "than", "also",
-    "about", "more", "some", "such", "there", "their", "they", "which",
-    "what", "how", "any", "all", "most", "other", "your", "you",
+from src.models.schemas import EvidenceValidationResult
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+_MIN_SENTENCE_LENGTH = 30   # characters — skip very short fragments
+_TFIDF_THRESHOLD = 0.10     # minimum cosine similarity to count as grounded
+_SPACY_MODEL = "en_core_web_sm"
+
+# spaCy's en_core_web_sm entity labels most relevant to medical text.
+# PERSON is excluded — patient names are not medical claims.
+_RELEVANT_ENTITY_LABELS = {
+    "ORG",      # pharmaceutical companies, health organisations
+    "PRODUCT",  # named drugs and medical products
+    "GPE",      # locations relevant to disease prevalence
+    "LAW",      # regulations, drug approvals
+    "NORP",     # nationalities/groups relevant to epidemiology
+    "FAC",      # medical facilities
 }
-_MIN_SENTENCE_LENGTH = 30  # characters — skip very short fragments
-_OVERLAP_THRESHOLD = 2     # content words that must appear in chunks to count as grounded
 
 
-def _content_words(text: str) -> set[str]:
-    """Extract lowercase content words, stripping punctuation and stopwords."""
-    tokens = re.findall(r"[a-z]{3,}", text.lower())
-    return {t for t in tokens if t not in _STOPWORDS}
+# ---------------------------------------------------------------------------
+# Lazy model loader — load once, reuse across calls
+# ---------------------------------------------------------------------------
+@lru_cache(maxsize=1)
+def _load_nlp():
+    """Load the spaCy NER model once and cache it."""
+    return spacy.load(_SPACY_MODEL)
 
 
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 def _split_sentences(text: str) -> list[str]:
     """Split on sentence boundaries, filtering out very short fragments."""
     raw = re.split(r"(?<=[.!?])\s+", text.strip())
     return [s.strip() for s in raw if len(s.strip()) >= _MIN_SENTENCE_LENGTH]
 
 
+def _extract_entities(text: str) -> set[str]:
+    """Return lowercase named entity strings from the relevant label set."""
+    nlp = _load_nlp()
+    doc = nlp(text)
+    return {
+        ent.text.lower()
+        for ent in doc.ents
+        if ent.label_ in _RELEVANT_ENTITY_LABELS
+    }
+
+
+# ---------------------------------------------------------------------------
+# Public tool function
+# ---------------------------------------------------------------------------
 def validate_evidence_support(
     answer_text: str,
-    evidence_chunks: list[RetrievedChunk],
+    evidence_text: str,
     cited_ids: list[str] | None = None,
+    available_ids: list[str] | None = None,
 ) -> EvidenceValidationResult:
-    """Run deterministic grounding checks on a draft answer.
+    """Run NLP-enhanced grounding checks on a draft answer.
 
-    Performs two checks:
-    - Citation ID integrity: verifies that every cited ID exists in the
-      retrieved chunk set (catches hallucinated citation IDs).
-    - Sentence coverage: for each substantive sentence in the answer, checks
-      whether at least `_OVERLAP_THRESHOLD` content words appear anywhere in
-      the retrieved snippets. Reports the fraction of sentences that pass.
+    Performs three checks:
+
+    1. Citation ID integrity — verifies that every cited ID exists in the
+       set of retrieved chunk IDs, catching hallucinated citation references.
+
+    2. TF-IDF cosine similarity — for each substantive sentence in the answer,
+       computes cosine similarity against the full evidence body using TF-IDF
+       vectors. Reports the fraction of sentences that meet the similarity
+       threshold. More principled than raw word-overlap counting.
+
+    3. Named entity overlap — extracts named entities from both the answer and
+       the evidence using spaCy's en_core_web_sm model. Flags any entities in
+       the answer that do not appear in the evidence, which may indicate
+       unsupported claims about specific drugs, organisations, or conditions.
+
+    The safety agent uses the returned EvidenceValidationResult to decide
+    whether to approve the draft, revise specific claims, or lower confidence.
+    It should NOT treat this as a binary pass/fail gate.
 
     Args:
         answer_text: The direct_answer text from the draft answer.
-        evidence_chunks: The RetrievedChunk objects available as evidence.
-        cited_ids: Optional list of citation_id values from the draft's
-            citations. Used for the ID integrity check.
+        evidence_text: All retrieved evidence snippets joined into a single
+            string. The LLM constructs this by concatenating the evidence
+            chunks visible in its context.
+        cited_ids: Citation IDs from the draft answer's citations list.
+            Used for the ID integrity check. Pass an empty list if none.
+        available_ids: The chunk_ids of all retrieved evidence chunks.
+            Used for the ID integrity check. Pass an empty list if none.
     """
     notes_parts: list[str] = []
     missing_claims: list[str] = []
 
+    _cited = list(cited_ids or [])
+    _available = set(available_ids or [])
+
     # ------------------------------------------------------------------
     # Check 1: Citation ID integrity
     # ------------------------------------------------------------------
-    available_ids = {chunk.chunk_id for chunk in evidence_chunks}
-    bad_citation_ids: list[str] = []
-
-    if cited_ids:
-        for cid in cited_ids:
-            if cid not in available_ids:
-                bad_citation_ids.append(cid)
+    if _cited and _available:
+        bad_citation_ids = [cid for cid in _cited if cid not in _available]
         if bad_citation_ids:
             notes_parts.append(
                 f"Citation ID check FAILED: {len(bad_citation_ids)} cited ID(s) not "
@@ -84,63 +138,74 @@ def validate_evidence_support(
             )
         else:
             notes_parts.append(
-                f"Citation ID check PASSED: all {len(cited_ids)} cited ID(s) exist "
+                f"Citation ID check PASSED: all {len(_cited)} cited ID(s) exist "
                 "in the retrieved set."
             )
     else:
-        notes_parts.append("Citation ID check SKIPPED: no cited_ids provided.")
+        bad_citation_ids = []
+        notes_parts.append("Citation ID check SKIPPED: cited_ids or available_ids not provided.")
 
     # ------------------------------------------------------------------
-    # Check 2: Sentence-level lexical coverage
+    # Check 2: TF-IDF cosine similarity
     # ------------------------------------------------------------------
-    if not evidence_chunks:
-        notes_parts.append("Coverage check SKIPPED: no evidence chunks provided.")
-        return EvidenceValidationResult(
-            supported=False,
-            missing_claims=["No evidence chunks were supplied."],
-            notes=" | ".join(notes_parts),
-        )
-
-    # Build a single set of all content words across all chunks
-    chunk_vocab: set[str] = set()
-    for chunk in evidence_chunks:
-        chunk_vocab.update(_content_words(chunk.snippet))
-
     sentences = _split_sentences(answer_text)
-    if not sentences:
-        notes_parts.append("Coverage check SKIPPED: no substantive sentences found.")
-        supported = len(bad_citation_ids) == 0
-        return EvidenceValidationResult(
-            supported=supported,
-            missing_claims=missing_claims,
-            notes=" | ".join(notes_parts),
-        )
+    coverage_ratio = 0.0
+    ungrounded: list[str] = []
+
+    vectorizer = TfidfVectorizer(stop_words="english", min_df=1)
+    corpus = [evidence_text] + sentences
+    tfidf_matrix = vectorizer.fit_transform(corpus)
+    evidence_vec = tfidf_matrix[0]
+    sentence_vecs = tfidf_matrix[1:]
+    similarities = cosine_similarity(sentence_vecs, evidence_vec).flatten()
 
     grounded_count = 0
-    ungrounded: list[str] = []
-    for sentence in sentences:
-        words = _content_words(sentence)
-        overlap = words & chunk_vocab
-        if len(overlap) >= _OVERLAP_THRESHOLD:
+    for sentence, score in zip(sentences, similarities):
+        if score >= _TFIDF_THRESHOLD:
             grounded_count += 1
         else:
-            ungrounded.append(sentence)
+            ungrounded.append(f"[sim={score:.2f}] {sentence}")
 
-    coverage_ratio = grounded_count / len(sentences)
+    coverage_ratio = grounded_count / len(sentences) if sentences else 0.0
     notes_parts.append(
-        f"Coverage check: {grounded_count}/{len(sentences)} sentences "
-        f"({coverage_ratio:.0%}) have >= {_OVERLAP_THRESHOLD} content words "
-        "overlapping with retrieved evidence."
+        f"TF-IDF similarity check: {grounded_count}/{len(sentences)} sentences "
+        f"({coverage_ratio:.0%}) meet the similarity threshold "
+        f"(>= {_TFIDF_THRESHOLD:.2f}) against the evidence body."
     )
-
     if ungrounded:
         missing_claims.extend(ungrounded)
         notes_parts.append(
-            f"{len(ungrounded)} sentence(s) had insufficient lexical overlap with evidence."
+            f"{len(ungrounded)} sentence(s) had low TF-IDF similarity to evidence."
         )
 
-    # Overall: pass if no bad citation IDs and majority of sentences are grounded
-    supported = len(bad_citation_ids) == 0 and coverage_ratio >= 0.5
+    # ------------------------------------------------------------------
+    # Check 3: Named entity overlap (spaCy en_core_web_sm)
+    # ------------------------------------------------------------------
+    answer_entities = _extract_entities(answer_text)
+    evidence_entities = _extract_entities(evidence_text)
+    unsupported_entities = sorted(answer_entities - evidence_entities)
+    supported_entities = answer_entities & evidence_entities
+
+    notes_parts.append(
+        f"Entity overlap check: {len(supported_entities)}/{len(answer_entities)} "
+        f"answer entities found in evidence. "
+        f"Supported: {sorted(supported_entities) or 'none'}. "
+        f"Not in evidence: {unsupported_entities or 'none'}."
+    )
+    if unsupported_entities:
+        missing_claims.extend(
+            f"Named entity not found in evidence: '{e}'"
+            for e in unsupported_entities
+        )
+
+    # ------------------------------------------------------------------
+    # Overall verdict
+    # ------------------------------------------------------------------
+    tfidf_ok = coverage_ratio >= 0.5 if sentences else True
+    entities_ok = len(unsupported_entities) == 0
+    citation_ok = len(bad_citation_ids) == 0
+
+    supported = citation_ok and tfidf_ok and entities_ok
 
     return EvidenceValidationResult(
         supported=supported,
