@@ -50,7 +50,7 @@ Key code locations:
 | `src/rag/` | Chunking, embedding, and ChromaDB ingestion |
 | `src/main.py` | CLI entrypoint |
 | `src/evals/` | Evaluation suite (deterministic, behavioral, judge) |
-| `MediRAG_Project_Notebook.ipynb` | Full project walkthrough notebook |
+| `MedicalAgent_Project_Notebook.ipynb` | Full project walkthrough notebook |
 
 ---
 
@@ -164,7 +164,7 @@ Results are written to `src/evals/results.csv` (12 test cases across all routing
 
 ## Project Notebook
 
-`MediRAG_Project_Notebook.ipynb` contains a full end-to-end walkthrough of the system: dataset exploration, preprocessing, chunking, embedding, RAG retrieval, evidence validation, multi-agent architecture, evaluation, and results analysis.
+`MedicalAgent_Project_Notebook.ipynb` contains a full end-to-end walkthrough of the system: dataset exploration, preprocessing, chunking, embedding, RAG retrieval, evidence validation, multi-agent architecture, evaluation, and results analysis.
 
 ---
 
