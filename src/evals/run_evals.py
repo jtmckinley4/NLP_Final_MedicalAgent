@@ -13,8 +13,7 @@ RED = "\033[91m"
 YELLOW = "\033[93m"
 RESET = "\033[0m"
 
-# Added evaluation pipeline integration:
-# This module orchestrates deterministic, behavioral, and rule‑based judging
+# Added evaluation pipeline integration: This module orchestrates deterministic, behavioral, and rule‑based judging 
 # for each test case, producing a structured results.csv file for analysis.
 
 def load_dataset(path="src/evals/dataset.jsonl"):
