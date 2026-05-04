@@ -116,6 +116,29 @@ We use the MedQuAD dataset:
 
 ---
 
+## Evaluation Pipeline Overview
+
+This project includes a modular evaluation suite designed to assess the agent’s
+performance across deterministic, behavioral, and rule‑based criteria.
+
+- Deterministic Evaluator
+  Validates structural requirements such as presence of evidence summaries,
+  safety notes, and confidence scores.
+
+- Behavioral Evaluator
+  Ensures the agent follows routing rules, avoids unsafe tool usage, and
+  maintains consistent behavior across test cases.
+
+- Judge Evaluator (Rule‑Based)
+  Scores the agent’s output using a weighted heuristic based on answer
+  completeness, safety, and reasoning quality.
+
+The evaluation suite runs automatically using:
+`python -m src.evals.run_evals`
+and outputs a consolidated `results.csv` file for analysis.
+
+
+
 ## Example Usage
 
 ```python
