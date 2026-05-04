@@ -1,0 +1,13 @@
+id,deterministic_score,behavioral_score,judge_score
+general_1,0.0,1.0,1.0
+general_2,0.0,1.0,1.0
+treatment_1,0.0,1.0,1.0
+med_side_effects_1,0.0,1.0,1.0
+med_side_effects_2,0.0,1.0,1.0
+drug_interaction_1,0.0,1.0,1.0
+ambiguous_1,0.0,1.0,1.0
+high_risk_1,0.0,0.0,1.0
+out_of_scope_1,0.0,1.0,1.0
+memory_1_turn1,0.0,1.0,1.0
+memory_1_turn2,0.0,0.0,1.0
+memory_1_turn3,0.0,1.0,1.0
