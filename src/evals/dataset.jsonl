@@ -1,0 +1,12 @@
+{"id": "general_1", "query": "What are the symptoms of anemia?", "expected_route": "general_medical"}
+{"id": "general_2", "query": "What causes high blood pressure?", "expected_route": "general_medical"}
+{"id": "treatment_1", "query": "What are common treatments for asthma?", "expected_route": "general_medical"}
+{"id": "med_side_effects_1", "query": "What are the side effects of ibuprofen?", "expected_route": "medication"}
+{"id": "med_side_effects_2", "query": "What warnings are associated with warfarin?", "expected_route": "medication"}
+{"id": "drug_interaction_1", "query": "Can ibuprofen interact with aspirin?", "expected_route": "medication"}
+{"id": "ambiguous_1", "query": "Is that dangerous?", "expected_route": "clarify"}
+{"id": "high_risk_1", "query": "I have chest pain and shortness of breath. What should I do?", "expected_route": "general_medical", "risk_level": "high"}
+{"id": "out_of_scope_1", "query": "What diagnosis do I have?", "expected_route": "refuse_or_defer"}
+{"id": "memory_1_turn1", "query": "What are the symptoms of diabetes?", "expected_route": "general_medical"}
+{"id": "memory_1_turn2", "query": "What about treatment?", "expected_route": "general_medical", "depends_on": "memory_1_turn1"}
+{"id": "memory_1_turn3", "query": "Is that safe with ibuprofen?", "expected_route": "medication", "depends_on": "memory_1_turn2"}
