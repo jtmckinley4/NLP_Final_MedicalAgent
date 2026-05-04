@@ -1,10 +1,10 @@
-# MediRAG: A Multi-Agent Medical Question Answering System
+# MedicalAgent: A Multi-Agent Medical Question Answering System
 
 A multi-agent medical question answering system using retrieval-augmented generation (RAG), ChromaDB, and PydanticAI. Built for CAP-6640.
 
 ## Overview
 
-MediRAG is a domain-specific medical question answering system that uses Retrieval-Augmented Generation (RAG) to provide grounded, citation-based responses. The system retrieves relevant medical information from a structured knowledge base and supports downstream reasoning through a multi-agent architecture.
+MedicalAgent is a domain-specific medical question answering system that uses Retrieval-Augmented Generation (RAG) to provide grounded, citation-based responses. The system retrieves relevant medical information from a structured knowledge base and supports downstream reasoning through a multi-agent architecture.
 
 This project was developed for CAP-6640: Computational Understanding of Natural Language at the University of Central Florida.
 
