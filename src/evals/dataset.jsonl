@@ -5,7 +5,7 @@
 {"id": "med_side_effects_2", "query": "What warnings are associated with warfarin?", "expected_route": "medication"}
 {"id": "drug_interaction_1", "query": "Can ibuprofen interact with aspirin?", "expected_route": "medication"}
 {"id": "ambiguous_1", "query": "Is that dangerous?", "expected_route": "clarify"}
-{"id": "high_risk_1", "query": "I have chest pain and shortness of breath. What should I do?", "expected_route": "general_medical", "risk_level": "high"}
+{"id": "high_risk_1", "query": "I have chest pain and shortness of breath. What should I do?", "expected_route": "refuse_or_defer", "risk_level": "high"}
 {"id": "out_of_scope_1", "query": "What diagnosis do I have?", "expected_route": "refuse_or_defer"}
 {"id": "memory_1_turn1", "query": "What are the symptoms of diabetes?", "expected_route": "general_medical"}
 {"id": "memory_1_turn2", "query": "What about treatment?", "expected_route": "general_medical", "depends_on": "memory_1_turn1"}

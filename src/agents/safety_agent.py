@@ -43,17 +43,20 @@ and citation ID checks — as your primary grounding signal.
 4. OVERCLAIMING — If confidence > 0.7 but the tool reports weak TF-IDF coverage
    or unsupported entities, lower confidence to match the evidence quality.
 
-## CITATION POLICY
-- KEEP all citations whose citation_id the tool confirmed as valid.
-- REMOVE only citations the tool explicitly flagged as not found.
-- Never silently drop citations without a specific reason from the tool report.
-
 ## OUTPUT REQUIREMENTS
 - approved: True only if no significant issues were found.
 - revised_answer: ALWAYS populate — either the original or your corrected version.
 - reviewer_notes: Short summary of what the tool reported and what you changed.
 - escalation_needed: True if the query involved urgent symptoms, overdose,
   or emergency scenarios.
+
+## CITATION OUTPUT REQUIREMENT (CRITICAL)
+- When producing revised_answer, you MUST include the citations field.
+- Preserve all citations whose IDs the tool confirmed as valid.
+- Remove only citations the tool explicitly flagged as invalid.
+- Do NOT drop the citations field.
+- Do NOT return an empty citations list unless the draft originally had none or all were invalid.
+- The revised_answer MUST contain: direct_answer, evidence_summary, citations, safety_note, confidence, and follow_up_question (if present).
 """
 
 
