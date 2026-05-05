@@ -184,3 +184,11 @@ from src.orchestration.pipeline import run_turn
 result = await run_turn("What are the symptoms of anemia?", memory=None)
 print(result.answer)
 ```
+
+## Contribution Summary
+
+| Member | Contribution |
+|--------|--------------|
+| Julian McKinley | RAG pipeline |
+| Sanjana Vijayabhaskar | Evaluation |
+| Cristhian Cruz | Multiagent app |
